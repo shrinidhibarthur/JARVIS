@@ -28,11 +28,10 @@ export default function InboxWidget({ emails, total, unread, highlights, loading
   // Build a lookup from subject→highlight for action hints from briefing
   const highlightMap = new Map(highlights.map((h) => [h.subject?.toLowerCase(), h]));
 
-  // Show recent emails (prefer unread first, then by recency)
-  const sorted = [...emails].sort((a, b) => {
-    if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
-    return new Date(b.receivedDateTime ?? 0).getTime() - new Date(a.receivedDateTime ?? 0).getTime();
-  });
+  // Sort purely by recency so latest emails always appear at the top
+  const sorted = [...emails].sort(
+    (a, b) => new Date(b.receivedDateTime ?? 0).getTime() - new Date(a.receivedDateTime ?? 0).getTime()
+  );
   const display = sorted.slice(0, 5);
 
   return (
@@ -69,7 +68,7 @@ export default function InboxWidget({ emails, total, unread, highlights, loading
             const dotClass = priority === "urgent" ? "danger" : priority === "high" ? "warning" : "info";
 
             return (
-              <div key={e.id ?? i} className="mail-row" style={{ opacity: e.isRead ? 0.75 : 1 }}>
+              <div key={e.id ?? i} className="mail-row">
                 <span className={`mail-dot ${dotClass}`} />
                 <div className="mail-copy">
                   <p className="mail-sender">{sender}</p>

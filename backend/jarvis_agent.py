@@ -162,11 +162,15 @@ def get_teams_chats(top: int = 20) -> list:
     my_email = me.get("email", "")
     my_name  = me.get("displayName", "").lower()
 
-    # Fetch chat list
+    # Fetch chat list (expand lastMessagePreview for last message snippet)
     response = requests.get(
         f"{GRAPH_API_BASE_URL}/me/chats",
         headers=headers,
-        params={"$top": top, "$select": "id,topic,chatType,lastUpdatedDateTime,webUrl"},
+        params={
+            "$top": top,
+            "$select": "id,topic,chatType,lastUpdatedDateTime,webUrl",
+            "$expand": "lastMessagePreview",
+        },
     )
     response.raise_for_status()
     chats = response.json().get("value", [])

@@ -22,6 +22,21 @@ function relativeTime(dateStr: string): string {
   return `${Math.floor(diff / 1440)}d ago`;
 }
 
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function lastMsgPreview(chat: any): string {
+  const lmp = chat.lastMessagePreview;
+  if (!lmp) return chat.chatType === "oneOnOne" ? "Direct message" : "Group chat";
+  // Skip deleted or system events
+  if (lmp.isDeleted) return "(message deleted)";
+  if (lmp.eventDetail) return "Activity in chat";
+  const sender = lmp.sender?.user?.displayName ?? "";
+  const body = stripHtml(lmp.body?.content ?? "").slice(0, 80);
+  return sender && body ? `${sender}: ${body}` : body || sender || "New message";
+}
+
 export default function TeamsWidget({ chats, chatCount, highlights, loading }: Props) {
   // Build lookup from chat name→highlight for action hints
   const highlightMap = new Map(highlights.map((h) => [h.from?.toLowerCase(), h]));
@@ -62,7 +77,7 @@ export default function TeamsWidget({ chats, chatCount, highlights, loading }: P
                 <div className="chat-copy">
                   <p className="chat-title">{name}</p>
                   <p className="chat-preview">
-                    {hint?.recommended_action ?? hint?.preview ?? (chat.chatType === "oneOnOne" ? "Direct message" : "Group chat")}
+                    {hint?.recommended_action ?? hint?.preview ?? lastMsgPreview(chat)}
                   </p>
                 </div>
                 <div className="chat-side">
