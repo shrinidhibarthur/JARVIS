@@ -33,11 +33,23 @@ function useToast() {
   return { toasts, add };
 }
 
+const BRIEFING_CACHE_KEY = "jarvis_briefing_cache";
+
+interface BriefingCache {
+  briefing: Briefing;
+  briefingTime: string;
+  emailHighlights: any[];
+  teamsHighlights: any[];
+  savedAt: number; // epoch ms
+}
+
 export default function DashboardPage() {
   const [briefing, setBriefing]             = useState<Briefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [goals, setGoals]                   = useState<Goal[]>([]);
   const [tasks, setTasks]                   = useState<Task[]>([]);
+  const [emails, setEmails]                 = useState<any[]>([]);
+  const [chats, setChats]                   = useState<any[]>([]);
   const [emailCount, setEmailCount]         = useState({ total: 0, unread: 0 });
   const [chatCount, setChatCount]           = useState(0);
   const [lastSync, setLastSync]             = useState<string | null>(null);
@@ -51,18 +63,35 @@ export default function DashboardPage() {
   const { toasts, add: toast }             = useToast();
   const { theme, toggle } = useTheme();
 
+  // Restore cached briefing on mount (survives page reloads)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BRIEFING_CACHE_KEY);
+      if (raw) {
+        const cached: BriefingCache = JSON.parse(raw);
+        // Use cache if less than 12 hours old
+        if (Date.now() - cached.savedAt < 12 * 60 * 60 * 1000) {
+          setBriefing(cached.briefing);
+          setBriefingTime(cached.briefingTime);
+        }
+      }
+    } catch { /* ignore malformed cache */ }
+  }, []);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [emails, chats, taskList, goalList] = await Promise.all([
+        const [emailList, chatList, taskList, goalList] = await Promise.all([
           getEmails(30).catch(() => []),
           getTeamsChats(20).catch(() => []),
           getTasks().catch(() => []),
           getGoals().catch(() => []),
         ]);
-        setEmailCount({ total: emails.length, unread: emails.filter((e: any) => !e.isRead).length });
-        setChatCount(chats.length);
+        setEmails(emailList);
+        setChats(chatList);
+        setEmailCount({ total: emailList.length, unread: emailList.filter((e: any) => !e.isRead).length });
+        setChatCount(chatList.length);
         setTasks(taskList);
         setGoals(goalList);
         setLastSync(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -76,14 +105,25 @@ export default function DashboardPage() {
     // Scroll hero card into view so the user sees it updating
     setTimeout(() => heroRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     try {
-      const [emails, chats, taskList] = await Promise.all([
+      const [freshEmails, freshChats, taskList] = await Promise.all([
         getEmails(20).catch(() => []), getTeamsChats(10).catch(() => []), getTasks().catch(() => []),
       ]);
-      const result = await generateBriefing({ emails, teams_messages: chats, tasks: taskList, goals });
+      const result = await generateBriefing({ emails: freshEmails, teams_messages: freshChats, tasks: taskList, goals });
       setBriefing(result);
       const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       setBriefingTime(now);
       setLastSync(now);
+      // Persist briefing to localStorage so it survives page reloads
+      try {
+        const cache: BriefingCache = {
+          briefing: result,
+          briefingTime: now,
+          emailHighlights: result.email_highlights ?? [],
+          teamsHighlights: result.teams_highlights ?? [],
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(BRIEFING_CACHE_KEY, JSON.stringify(cache));
+      } catch { /* storage quota exceeded — ignore */ }
       toast("Morning briefing ready", "success");
     } catch (e: any) {
       console.error("[JARVIS] Briefing failed:", e);
@@ -287,8 +327,8 @@ export default function DashboardPage() {
 
       {/* Inbox + Teams */}
       <div className="dashboard-grid-secondary grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <InboxWidget total={emailCount.total} unread={emailCount.unread} highlights={emailHighlights} />
-        <TeamsWidget chatCount={chatCount} highlights={briefing?.teams_highlights ?? []} />
+        <InboxWidget emails={emails} total={emailCount.total} unread={emailCount.unread} highlights={emailHighlights} loading={loading} />
+        <TeamsWidget chats={chats} chatCount={chatCount} highlights={briefing?.teams_highlights ?? []} loading={loading} />
       </div>
 
       {/* Toasts */}
